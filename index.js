@@ -5,12 +5,33 @@ const mysql = require( 'mysql' )
 const port = 8080
 const moment = require( 'moment' )
 const http = require( "http" )
-const socketIo = require("socket.io");
+const socketIo = require("socket.io")
 const server = http.createServer( app )
+const redis = require( 'redis' )
 
+app.use( cors( {
+  origin: '*'
+} ) )
+
+const redisClient = redis.createClient(
+  { 
+    host : "192.168.25.1", 
+    port : 6379, 
+    db : 0, 
+    password:"" 
+  }
+)
+const allowCrossDomain = ( req, res, next ) => {
+  res.header( 'Access-Control-Allow-Credentials', true )
+  res.header( 'Access-Control-Allow-Origin', req.headers.origin )
+  res.header( 'Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS' )
+  res.header( 'Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version' )
+  next()
+}
+
+app.use( allowCrossDomain )
 
 const bodyParser = require( 'body-parser' )
-const { allowedNodeEnvironmentFlags } = require('process')
 app.use( bodyParser.urlencoded( { extended: true } ) )
 app.use( bodyParser.json() )
 
@@ -84,42 +105,60 @@ conn.connect( ( err ) => {
       if( err ) throw err
     } )
 } )
-
+// socket
+// notify 위해 socket으로는 이벤트 redis로는 publish 하기 위한 데이터 set or get
 const io = socketIo( server, {
   cors: {
     origin: "http://localhost:3000",
     methods: ["GET", "POST"]
   }
 } )
-
-let roomName
-
 io.on( "connection", ( socket ) => {
   console.log( "New client connected" )
-  socket.on( 'init', (res) => {
-    console.log( res )
+  socket.on( 'init', ( res ) => {
+    console.log( 'init, id는', res )
   } )
 
-  socket.on( 'join', ( data ) => {
-    console.log( 'join', data )
-    socket.join( data.roomName )
-    roomName = data.roomName
-    
-  } )
   socket.on( "disconnect", () => {
     console.log("Client disconnected")
   } )
 } )
+// redis
+redisClient.on( 'error', ( error ) => {
+  console.error( error )
+} )
 
+redisClient.on( 'ready', () => {
+  console.log( 'redis 준비완료' )
+} )
 
+redisClient.on( 'connect', () => {
+  console.log( 'redis connect됨' )
+} )
 
-app.use(cors({
-  origin: '*'
-}))
-
+redisClient.connect()
 
 app.get( '/', ( req, res ) => {
   res.send( 'connect success' )
+} )
+
+app.get( '/socket/*', async ( req, res ) => {
+  // redisClient.on( 'hi', () => {
+  //   redisClient.get("NAME" , (err , result) => { console.log(result) });
+
+  // } )
+  console.log( 'socket' )
+
+
+  redisClient.get( 'key', function(err, value) {
+    console.log( 'result',value )
+  })
+
+  
+  
+  // redisClient.publish( "test" , (err , result) => { 
+  //   console.log(result) 
+  // })
 } )
 
 app.post( '/registeruser', ( req, res, next ) => {
@@ -134,7 +173,6 @@ app.post( '/registeruser', ( req, res, next ) => {
         } )
         next( err )
       } else {
-        console.log( 'asd' )
         res.send( {
           code: 200,
           payload: {
@@ -147,10 +185,8 @@ app.post( '/registeruser', ( req, res, next ) => {
 
 app.post( '/validateuser', ( req, res, next ) => {
   const { email, password } = req.body
-  console.log( email, password )
   const sql = `select * from user where email = '${email}' and password = '${password}'`
   conn.query( sql, ( err, result ) => {
-    console.log( result )
     if( err ) {
       res.send( {
         code: 404
