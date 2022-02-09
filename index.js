@@ -15,7 +15,7 @@ redisClient.connect()
 const bodyParser = require( 'body-parser' )
 app.use( bodyParser.urlencoded( { extended: true } ) )
 app.use( bodyParser.json() )
-
+app.use( cors() )
 app.use(function (err, req, res, next) {
   console.error(err.stack)
   res.status(500).send('Something broke!')
@@ -58,8 +58,7 @@ conn.connect( ( err ) => {
 
     const room = `CREATE TABLE IF NOT EXISTS room (
       id INT NOT NULL AUTO_INCREMENT,
-      title VARCHAR(45) NOT NULL,
-      owner VARCHAR(45),
+      user_group VARCHAR(45) NOT NULL,
       create_date VARCHAR(45) NOT NULL,
       PRIMARY KEY (id),
       UNIQUE INDEX id_UNIQUE (id ASC))`
@@ -97,6 +96,7 @@ const io = socketIo( server, {
 
 io.on( "connection", ( socket ) => {
   socket.on( 'init', res => {
+    console.log( 'init' )
     const name = _.get( res, 'name' )
     console.log( `${name} 접속` )
     console.log( '접속자 수:', io.engine.clientsCount )
@@ -107,21 +107,7 @@ io.on( "connection", ( socket ) => {
     console.log( '접속자 수:', io.engine.clientsCount )
   } )
 } )
-// redis
-redisClient.on( 'error', ( error ) => {
-  console.error( error )
-} )
 
-// redis
-redisClient.on( 'connect', () => {
-  console.log( 'redis connect' )
-} )
-
-redisClient.on( 'connect', () => {
-  console.log( 'redis connect됨' )
-} )
-
-redisClient.connect()
 
 app.get( '/', ( req, res ) => {
   res.send( 'connect success' )
@@ -129,26 +115,29 @@ app.get( '/', ( req, res ) => {
 
 app.post ( '/makeroom', ( req, res, next ) => {
   console.log( 'makeroom', req.body ) // 그룹으로 지정할 userId List
+
   // redisClient.lpush( list, )
 
-  // const sql
-  // conn.query( sql, ( err, result ) => {
-  //   if( err ) {
-  //     res.send( {
-  //       code: 404
-  //     } )
-  //     next( err )
-  //   } else {
-  //     res.send( {
-  //       code: 200,
-  //       payload: {
-  //         result
-  //       }
-  //     } )
-  //   }
-  // } )
-
-
+  // room 추가
+  const userGroup = JSON.stringify( req.body )
+  const now = moment().valueOf()
+  const sql = `INSERT INTO room( user_group, create_date )
+  VALUES ( '${userGroup}','${now}' )`
+  conn.query( sql, ( err, result ) => {
+    if( err ) {
+      res.send( {
+        code: 404
+      } )
+      next( err )
+    } else {
+      res.send( {
+        code: 200,
+        payload: {
+          roomId: _.get( result, 'insertId' )
+        }
+      } )
+    }
+  } )
 } )
 
 app.post( '/registeruser', ( req, res, next ) => {
@@ -156,21 +145,21 @@ app.post( '/registeruser', ( req, res, next ) => {
   const now = moment().valueOf()
   const sql = `INSERT INTO user( name, password, email, create_date )
   VALUES ( '${name}', '${password}', '${email}', '${now}' )`
-    conn.query( sql, ( err, result ) => {
-      if( err ) {
-        res.send( {
-          code: 404
-        } )
-        next( err )
-      } else {
-        res.send( {
-          code: 200,
-          payload: {
-            result
-          }
-        } )
-      }
-    } )
+  conn.query( sql, ( err, result ) => {
+    if( err ) {
+      res.send( {
+        code: 404
+      } )
+      next( err )
+    } else {
+      res.send( {
+        code: 200,
+        payload: {
+          result
+        }
+      } )
+    }
+  } )
 } )
 
 app.post( '/validateuser', ( req, res, next ) => {
