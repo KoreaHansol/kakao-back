@@ -5,12 +5,14 @@ const mysql = require( 'mysql' )
 const port = 8080
 const moment = require( 'moment' )
 const http = require( "http" )
-const socketIo = require("socket.io");
+const socketIo = require("socket.io")
+const redis = require( 'redis' )
 const server = http.createServer( app )
-
+const redisClient = redis.createClient()
+const _ = require( 'lodash' )
+redisClient.connect()
 
 const bodyParser = require( 'body-parser' )
-const { allowedNodeEnvironmentFlags } = require('process')
 app.use( bodyParser.urlencoded( { extended: true } ) )
 app.use( bodyParser.json() )
 
@@ -92,25 +94,21 @@ const io = socketIo( server, {
   }
 } )
 
-let roomName
-
 io.on( "connection", ( socket ) => {
-  console.log( "New client connected" )
-  socket.on( 'init', (res) => {
-    console.log( res )
+  socket.on( 'init', res => {
+    const name = _.get( res, 'name' )
+    console.log( `${name} 접속` )
   } )
 
-  socket.on( 'join', ( data ) => {
-    console.log( 'join', data )
-    socket.join( data.roomName )
-    roomName = data.roomName
-    
-  } )
   socket.on( "disconnect", () => {
     console.log("Client disconnected")
   } )
 } )
 
+// redis
+redisClient.on( 'connect', () => {
+  console.log( 'redis connect' )
+} )
 
 
 app.use(cors({
@@ -120,6 +118,10 @@ app.use(cors({
 
 app.get( '/', ( req, res ) => {
   res.send( 'connect success' )
+} )
+
+app.post ( '/makeroom', ( req, res, next ) => {
+  console.log( 'makeroom', req.body )
 } )
 
 app.post( '/registeruser', ( req, res, next ) => {
@@ -134,7 +136,6 @@ app.post( '/registeruser', ( req, res, next ) => {
         } )
         next( err )
       } else {
-        console.log( 'asd' )
         res.send( {
           code: 200,
           payload: {
@@ -147,10 +148,8 @@ app.post( '/registeruser', ( req, res, next ) => {
 
 app.post( '/validateuser', ( req, res, next ) => {
   const { email, password } = req.body
-  console.log( email, password )
   const sql = `select * from user where email = '${email}' and password = '${password}'`
   conn.query( sql, ( err, result ) => {
-    console.log( result )
     if( err ) {
       res.send( {
         code: 404
