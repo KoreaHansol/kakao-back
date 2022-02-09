@@ -6,30 +6,11 @@ const port = 8080
 const moment = require( 'moment' )
 const http = require( "http" )
 const socketIo = require("socket.io")
-const server = http.createServer( app )
 const redis = require( 'redis' )
-
-app.use( cors( {
-  origin: '*'
-} ) )
-
-const redisClient = redis.createClient(
-  { 
-    host : "192.168.25.1", 
-    port : 6379, 
-    db : 0, 
-    password:"" 
-  }
-)
-const allowCrossDomain = ( req, res, next ) => {
-  res.header( 'Access-Control-Allow-Credentials', true )
-  res.header( 'Access-Control-Allow-Origin', req.headers.origin )
-  res.header( 'Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS' )
-  res.header( 'Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version' )
-  next()
-}
-
-app.use( allowCrossDomain )
+const server = http.createServer( app )
+const redisClient = redis.createClient()
+const _ = require( 'lodash' )
+redisClient.connect()
 
 const bodyParser = require( 'body-parser' )
 app.use( bodyParser.urlencoded( { extended: true } ) )
@@ -113,14 +94,17 @@ const io = socketIo( server, {
     methods: ["GET", "POST"]
   }
 } )
+
 io.on( "connection", ( socket ) => {
-  console.log( "New client connected" )
-  socket.on( 'init', ( res ) => {
-    console.log( 'init, id는', res )
+  socket.on( 'init', res => {
+    const name = _.get( res, 'name' )
+    console.log( `${name} 접속` )
+    console.log( '접속자 수:', io.engine.clientsCount )
   } )
 
   socket.on( "disconnect", () => {
-    console.log("Client disconnected")
+    console.log( 'Client disconnected' )
+    console.log( '접속자 수:', io.engine.clientsCount )
   } )
 } )
 // redis
@@ -128,8 +112,9 @@ redisClient.on( 'error', ( error ) => {
   console.error( error )
 } )
 
-redisClient.on( 'ready', () => {
-  console.log( 'redis 준비완료' )
+// redis
+redisClient.on( 'connect', () => {
+  console.log( 'redis connect' )
 } )
 
 redisClient.on( 'connect', () => {
@@ -142,23 +127,28 @@ app.get( '/', ( req, res ) => {
   res.send( 'connect success' )
 } )
 
-app.get( '/socket/*', async ( req, res ) => {
-  // redisClient.on( 'hi', () => {
-  //   redisClient.get("NAME" , (err , result) => { console.log(result) });
+app.post ( '/makeroom', ( req, res, next ) => {
+  console.log( 'makeroom', req.body ) // 그룹으로 지정할 userId List
+  // redisClient.lpush( list, )
 
+  // const sql
+  // conn.query( sql, ( err, result ) => {
+  //   if( err ) {
+  //     res.send( {
+  //       code: 404
+  //     } )
+  //     next( err )
+  //   } else {
+  //     res.send( {
+  //       code: 200,
+  //       payload: {
+  //         result
+  //       }
+  //     } )
+  //   }
   // } )
-  console.log( 'socket' )
 
 
-  redisClient.get( 'key', function(err, value) {
-    console.log( 'result',value )
-  })
-
-  
-  
-  // redisClient.publish( "test" , (err , result) => { 
-  //   console.log(result) 
-  // })
 } )
 
 app.post( '/registeruser', ( req, res, next ) => {
