@@ -98,10 +98,12 @@ io.on( "connection", ( socket ) => {
   socket.on( 'init', res => {
     const name = _.get( res, 'name' )
     console.log( `${name} 접속` )
+    console.log( '접속자 수:', io.engine.clientsCount )
   } )
 
   socket.on( "disconnect", () => {
-    console.log("Client disconnected")
+    console.log( 'Client disconnected' )
+    console.log( '접속자 수:', io.engine.clientsCount )
   } )
 } )
 
@@ -121,7 +123,27 @@ app.get( '/', ( req, res ) => {
 } )
 
 app.post ( '/makeroom', ( req, res, next ) => {
-  console.log( 'makeroom', req.body )
+  console.log( 'makeroom', req.body ) // 그룹으로 지정할 userId List
+  // redisClient.lpush( list, )
+
+  // const sql
+  // conn.query( sql, ( err, result ) => {
+  //   if( err ) {
+  //     res.send( {
+  //       code: 404
+  //     } )
+  //     next( err )
+  //   } else {
+  //     res.send( {
+  //       code: 200,
+  //       payload: {
+  //         result
+  //       }
+  //     } )
+  //   }
+  // } )
+
+
 } )
 
 app.post( '/registeruser', ( req, res, next ) => {
