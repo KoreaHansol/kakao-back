@@ -43,40 +43,47 @@ conn.connect( ( err ) => {
   } )
 
   const sql = `CREATE TABLE IF NOT EXISTS user (
-    id INT NOT NULL AUTO_INCREMENT,
+    userId INT NOT NULL AUTO_INCREMENT,
     email VARCHAR(45) NOT NULL,
     password VARCHAR(45) NOT NULL,
     name VARCHAR(45) NOT NULL,
     create_date VARCHAR(45) NOT NULL,
-    PRIMARY KEY (id),
+    PRIMARY KEY (userId),
     UNIQUE INDEX email_UNIQUE (email ASC),
-    UNIQUE INDEX id_UNIQUE (id ASC))`
+    UNIQUE INDEX userId_UNIQUE (userId ASC))`
 
     conn.query( sql, ( err, result ) => {
       if( err ) throw err
     } )
 
     const room = `CREATE TABLE IF NOT EXISTS room (
-      id INT NOT NULL AUTO_INCREMENT,
-      user_group VARCHAR(45) NOT NULL,
+      roomId INT NOT NULL AUTO_INCREMENT,
       create_date VARCHAR(45) NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE INDEX id_UNIQUE (id ASC))`
+      PRIMARY KEY (roomId),
+      UNIQUE INDEX roomId_UNIQUE (roomId ASC))`
 
     conn.query( room, ( err, result ) => {
       if( err ) throw err
     } )
     
     const chat = `CREATE TABLE IF NOT EXISTS chat (
-      id INT NOT NULL AUTO_INCREMENT,
-      image VARCHAR(45),
-      user VARCHAR(45) NOT NULL,
-      chat VARCHAR(45) NOT NULL,
+      chatId INT NOT NULL AUTO_INCREMENT,
+      userId VARCHAR(45) NOT NULL,
+      message VARCHAR(45) NOT NULL,
       create_date VARCHAR(45) NOT NULL,
-      PRIMARY KEY (id),
-      UNIQUE INDEX id_UNIQUE (id ASC))`
+      PRIMARY KEY (chatId),
+      UNIQUE INDEX chatId_UNIQUE (chatId ASC))`
 
     conn.query( chat, ( err, result ) => {
+      if( err ) throw err
+    } )
+
+    const roomUser = `CREATE TABLE IF NOT EXISTS room_user (
+      roomId INT NOT NULL ,
+      userId INT NOT NULL,
+      create_date VARCHAR(45) NOT NULL)`
+
+    conn.query( roomUser, ( err, result ) => {
       if( err ) throw err
     } )
 
@@ -96,7 +103,6 @@ const io = socketIo( server, {
 
 io.on( "connection", ( socket ) => {
   socket.on( 'init', res => {
-    console.log( 'init' )
     const name = _.get( res, 'name' )
     console.log( `${name} 접속` )
     console.log( '접속자 수:', io.engine.clientsCount )
@@ -121,7 +127,7 @@ app.post ( '/makeroom', ( req, res, next ) => {
   // room 추가
   const userGroup = JSON.stringify( req.body )
   const now = moment().valueOf()
-  const sql = `INSERT INTO room( user_group, create_date )
+  const sql = `INSERT INTO room( create_date )
   VALUES ( '${userGroup}','${now}' )`
   conn.query( sql, ( err, result ) => {
     if( err ) {
