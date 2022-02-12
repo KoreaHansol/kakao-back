@@ -83,7 +83,7 @@ conn.connect( ( err ) => {
       roomId INT NOT NULL ,
       userId INT NOT NULL,
       userGroupString VARCHAR(45) NOT NULL,
-      lastChat VARCHAR(45),
+      lastChat VARCHAR(100),
       lastChatDate VARCHAR(45),
       create_date VARCHAR(45) NOT NULL)`
 
@@ -100,6 +100,12 @@ conn.connect( ( err ) => {
     conn.query( sql10, ( err, result ) => {
       if( err ) throw err
     } )
+
+    const sql102 = `alter table room_user convert to character set utf8`
+    conn.query( sql102, ( err, result ) => {
+      if( err ) throw err
+    } )
+    
 } )
 // socket
 // notify 위해 socket으로는 이벤트 redis로는 publish 하기 위한 데이터 set or get
@@ -165,7 +171,7 @@ app.post ( '/pushchat', async ( req, res, next ) => {
   const now = moment().valueOf()
 
   let sql = `insert into chat(  userId, message, roomId, create_date ) values ( '${userId}', '${message}', '${roomId}', '${now}' )`
-  
+
   await conn.query( sql, async ( err, result ) => {
     if( err ) {
       res.send( {
@@ -194,9 +200,47 @@ app.post ( '/pushchat', async ( req, res, next ) => {
     } )
   } )
  }
+
+
+  pushLastChat( roomId, message )
 } )
 
 
+function pushLastChat( roomId, message ) {
+  return new Promise( ( resolve, reject ) => {
+    const sql = `select * from room_user where roomId = '${roomId}' `
+
+    conn.query( sql, async ( err, result ) => {
+      if( err ) {
+        reject( err )
+      } else {
+        const res1 = await sub( roomId, message )
+      }
+    } )
+  
+  } )
+}
+
+function sub( roomId, message ) {
+  return new Promise( (resolve, reject) => {
+    const now = moment().valueOf()
+      //  lastChat
+      //  lastChatDate
+    
+
+    const sql = `UPDATE room_user SET lastChat = '${message}', lastChatDate = '${now}' WHERE roomId = ${roomId}`
+    conn.query( sql, ( err, result ) => {
+      if( err ) {
+        reject( err )
+      } else {
+        // dataList.push( JSON.parse( JSON.stringify( result ) ) )
+      }
+    } )
+
+    resolve()
+  } )
+  
+}
 
 function getAllUserOfRoom( roomId, userId ) {
   return new Promise( ( resolve, reject ) => {
