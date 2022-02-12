@@ -68,8 +68,9 @@ conn.connect( ( err ) => {
     
     const chat = `CREATE TABLE IF NOT EXISTS chat (
       chatId INT NOT NULL AUTO_INCREMENT,
-      userId VARCHAR(45) NOT NULL,
-      message VARCHAR(45) NOT NULL,
+      userId INT NOT NULL,
+      roomId INT NOT NULL,
+      message VARCHAR(100) NOT NULL,
       create_date VARCHAR(45) NOT NULL,
       PRIMARY KEY (chatId),
       UNIQUE INDEX chatId_UNIQUE (chatId ASC))`
@@ -81,6 +82,9 @@ conn.connect( ( err ) => {
     const roomUser = `CREATE TABLE IF NOT EXISTS room_user (
       roomId INT NOT NULL ,
       userId INT NOT NULL,
+      userGroupString VARCHAR(45) NOT NULL,
+      lastChat VARCHAR(45),
+      lastChatDate VARCHAR(45),
       create_date VARCHAR(45) NOT NULL)`
 
     conn.query( roomUser, ( err, result ) => {
@@ -89,6 +93,11 @@ conn.connect( ( err ) => {
 
     const sql2 = `alter table user convert to character set utf8`
     conn.query( sql2, ( err, result ) => {
+      if( err ) throw err
+    } )
+
+    const sql10 = `alter table chat convert to character set utf8`
+    conn.query( sql10, ( err, result ) => {
       if( err ) throw err
     } )
 } )
@@ -104,13 +113,10 @@ const io = socketIo( server, {
 io.on( "connection", ( socket ) => {
   socket.on( 'init', res => {
     const name = _.get( res, 'name' )
-    console.log( `${name} 접속` )
-    console.log( '접속자 수:', io.engine.clientsCount )
+    redisClient.set( res.userId, socket.id )
   } )
 
   socket.on( "disconnect", () => {
-    console.log( 'Client disconnected' )
-    console.log( '접속자 수:', io.engine.clientsCount )
   } )
 } )
 
@@ -119,32 +125,195 @@ app.get( '/', ( req, res ) => {
   res.send( 'connect success' )
 } )
 
-app.post ( '/makeroom', ( req, res, next ) => {
-  console.log( 'makeroom', req.body ) // 그룹으로 지정할 userId List
+app.post ( '/makeroom', async ( req, res, next ) => {
 
   // redisClient.lpush( list, )
 
   // room 추가
-  const userGroup = JSON.stringify( req.body )
+  const userIdGroup = req.body
   const now = moment().valueOf()
+  let roomId
+
   const sql = `INSERT INTO room( create_date )
-  VALUES ( '${userGroup}','${now}' )`
-  conn.query( sql, ( err, result ) => {
+  VALUES ( '${now}' )`
+  await conn.query( sql, async ( err, result ) => {
     if( err ) {
       res.send( {
         code: 404
       } )
       next( err )
     } else {
+      roomId = _.get( result, 'insertId' )
+      try {
+        await pushRoomUser( userIdGroup, roomId )
+      } catch( err ) {}
       res.send( {
         code: 200,
         payload: {
-          roomId: _.get( result, 'insertId' )
+          roomId
         }
       } )
     }
   } )
 } )
+
+app.post ( '/pushchat', async ( req, res, next ) => {
+  const userId = req.body.userId
+  const message = req.body.chatValue
+  const roomId = req.body.roomId
+  
+  const now = moment().valueOf()
+
+  let sql = `insert into chat(  userId, message, roomId, create_date ) values ( '${userId}', '${message}', '${roomId}', '${now}' )`
+  
+  await conn.query( sql, async ( err, result ) => {
+    if( err ) {
+      res.send( {
+        code: 404
+      } )
+      next( err )
+    } else {
+      
+      res.send( {
+        code: 200,
+        payload: {
+          roomId
+        }
+      } )
+    }
+  } )
+ 
+ const toUserIdList = await getAllUserOfRoom( roomId, userId )
+
+ for( const id of toUserIdList ) {
+  redisClient.get( id ).then( ( res ) => {
+    const socketId = res
+    io.to( socketId ).emit( 'chat', {
+      fromUserId: userId,
+      refreshRoomId: roomId
+    } )
+  } )
+ }
+} )
+
+
+
+function getAllUserOfRoom( roomId, userId ) {
+  return new Promise( ( resolve, reject ) => {
+    const sql = `select * from room_user where roomId = '${roomId}' and userId = '${userId}' `
+
+    conn.query( sql, ( err, result ) => {
+      if( err ) {
+        reject( err )
+      } else {
+        const parseData = JSON.parse( JSON.stringify( result ) )
+        const userGroup = JSON.parse( _.get( parseData, '0.userGroupString' ) )
+        resolve( userGroup )
+      }
+    } )
+  
+  } )
+}
+
+
+app.get ( '/getroomlist', async ( req, res, next ) => {
+  const userId = req.query.userId
+
+  const sql = `select * from room_user where userId = '${ userId }' `
+  await conn.query( sql, async ( err, result ) => {
+    if( err ) {
+      res.send( {
+        code: 404
+      } )
+      next( err )
+    } else {
+      
+      
+      
+      const roomList = JSON.parse( JSON.stringify( result ) )
+
+      for( const room of roomList ) {
+        room.userGroupString = await getString( room.userGroupString )
+      }
+
+
+      res.send( {
+        code: 200,
+        payload: {
+          roomList
+        }
+      } )
+    }
+  } )
+} )
+
+// async function getProcessdRoomList( roomList ) {
+//   return new Promise( async ( resolve, reject ) => {
+//     let newRoomList = []
+//     let userList
+//     for( const room of roomList ) {
+//       const parseRoom = JSON.parse( JSON.stringify( room ) )
+
+      
+
+//       const sql = `select * from room_user where roomId = '${ parseRoom.roomId }'`
+
+//       await conn.query( sql, ( err, result ) => {
+//         if( err ) {
+//           reject( err )
+//         } else {
+
+//           const res = JSON.parse( JSON.stringify( result ) 
+//           res
+//         }
+//       } )
+
+//       // newRoomList.push( parseRoom )
+
+      
+
+     
+
+//     }
+    
+    
+//   } )
+// }
+
+async function getString( userList ) {
+  return new Promise( ( resolve, reject ) => {
+
+    const parseUserList = JSON.parse( userList )
+    
+    const sql = `select * from user where userId in ( ${ _.join( parseUserList, ',' ) } ) order by name asc`
+    conn.query( sql, ( err, result ) => {
+      if( err ) {
+        reject( err )
+      } else {
+        const list = JSON.parse( JSON.stringify( result ) )
+        const nameStr = _( list ).map( 'name' ).join( ', ' )
+        resolve( nameStr ) 
+      }
+    } )
+  } )
+}
+
+
+
+async function pushRoomUser( userIdGroup, roomId ) {
+  const now = moment().valueOf()
+  for( const userId of userIdGroup ) {
+    
+    const sql = `INSERT INTO room_user( roomId, userId, userGroupString, create_date )
+    VALUES ( '${roomId}', '${userId}', '${ JSON.stringify( userIdGroup ) }' ,${now} )`
+
+    await conn.query( sql, ( err, result ) => {
+      if( err ) {
+        throw new Error( err )
+      }
+    } )
+  }
+}
 
 app.post( '/registeruser', ( req, res, next ) => {
   const { name, password, email } = req.body
@@ -201,6 +370,29 @@ app.get( '/getuserlist', ( req, res, next ) => {
         code: 200,
         payload: {
           result
+        }
+      } )
+    }
+  } )
+} )
+
+
+
+app.get( '/getchatlist', ( req, res, next ) => {
+  const roomId = req.query.roomId
+  const sql = `select * from chat where roomId = ${ roomId }`
+  conn.query( sql, ( err, result ) => {
+    if( err ) {
+      res.send( {
+        code: 404
+      } )
+      next( err )
+    } else {
+      const chatList = JSON.parse( JSON.stringify( result ) )
+      res.send( {
+        code: 200,
+        payload: {
+          chatList
         }
       } )
     }
