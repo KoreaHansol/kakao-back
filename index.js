@@ -83,6 +83,7 @@ conn.connect( ( err ) => {
       roomId INT NOT NULL ,
       userId INT NOT NULL,
       userGroupString VARCHAR(45) NOT NULL,
+      userCount INT,
       lastChat VARCHAR(100),
       lastChatDate VARCHAR(45),
       notRead INT,
@@ -345,7 +346,7 @@ app.get ( '/getroomlist', async ( req, res, next ) => {
       const roomList = JSON.parse( JSON.stringify( result ) )
 
       for( const room of roomList ) {
-        room.userGroupString = await getString( room.userGroupString )
+        room.userGroupString = await getString( room.userGroupString, userId )
       }
 
 
@@ -392,12 +393,16 @@ app.get ( '/getroomlist', async ( req, res, next ) => {
 //   } )
 // }
 
-async function getString( userList ) {
+async function getString( userList, userId ) {
   return new Promise( ( resolve, reject ) => {
 
     const parseUserList = JSON.parse( userList )
+
+    const filterUserList = _.filter( parseUserList, o => {
+      return o != userId
+    } )
     
-    const sql = `select * from user where userId in ( ${ _.join( parseUserList, ',' ) } ) order by name asc`
+    const sql = `select * from user where userId in ( ${ _.join( filterUserList, ',' ) } ) order by name asc`
     conn.query( sql, ( err, result ) => {
       if( err ) {
         reject( err )
@@ -415,9 +420,13 @@ async function getString( userList ) {
 async function pushRoomUser( userIdGroup, roomId ) {
   const now = moment().valueOf()
   for( const userId of userIdGroup ) {
+
+    const userCount = _.get( userIdGroup, 'length', 0 ) 
+
     
-    const sql = `INSERT INTO room_user( roomId, userId, userGroupString, create_date )
-    VALUES ( '${roomId}', '${userId}', '${ JSON.stringify( userIdGroup ) }' ,${now} )`
+    
+    const sql = `INSERT INTO room_user( roomId, userId, userGroupString, userCount, create_date )
+    VALUES ( '${roomId}', '${userId}', '${ JSON.stringify( userIdGroup ) }', ${userCount === 2 ? 1 : _.get( userIdGroup, 'length', 0 ) } ,${now} )`
 
     await conn.query( sql, ( err, result ) => {
       if( err ) {
