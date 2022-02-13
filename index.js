@@ -85,6 +85,7 @@ conn.connect( ( err ) => {
       userGroupString VARCHAR(45) NOT NULL,
       lastChat VARCHAR(100),
       lastChatDate VARCHAR(45),
+      notRead INT,
       create_date VARCHAR(45) NOT NULL)`
 
     conn.query( roomUser, ( err, result ) => {
@@ -118,12 +119,24 @@ const io = socketIo( server, {
 
 io.on( "connection", ( socket ) => {
   socket.on( 'init', res => {
-    const name = _.get( res, 'name' )
-    redisClient.set( res.userId, socket.id )
+    redisClient.hSet( res.userId, 'socketId', socket.id )
+
   } )
 
   socket.on( "disconnect", () => {
   } )
+
+  socket.on( 'leave', res => {
+    console.log( 'leave', res )
+    redisClient.hDel( res.userId, 'enterRoom' )
+
+  } )
+
+  socket.on( 'enter', async res => {
+    redisClient.hSet( res.userId, 'enterRoom', res.roomId )
+    await pushUnReadCount( res.roomId, res.userId, true )
+  } )
+
 } )
 
 
@@ -192,18 +205,74 @@ app.post ( '/pushchat', async ( req, res, next ) => {
  const toUserIdList = await getAllUserOfRoom( roomId, userId )
 
  for( const id of toUserIdList ) {
-  redisClient.get( id ).then( ( res ) => {
+  await redisClient.hGet( id, 'socketId' ).then( res => {
     const socketId = res
     io.to( socketId ).emit( 'chat', {
       fromUserId: userId,
       refreshRoomId: roomId
     } )
   } )
+
+  await redisClient.hGet( id, 'enterRoom' ).then( res => {
+    const enterRoom = res
+    console.log( 'asd', id, enterRoom,roomId )
+    if( enterRoom != roomId ) {
+      pushUnReadCount( roomId, id )
+    } else {
+      pushUnReadCount( roomId, id, true )
+    }
+    // io.to( socketId ).emit( 'chat', {
+    //   fromUserId: userId,
+    //   refreshRoomId: roomId
+    // } )
+  } )
  }
-
-
   pushLastChat( roomId, message )
 } )
+
+function pushUnReadCount( roomId, userId, zero ) {
+
+  return new Promise( ( resolve, reject ) => {
+    const sql = `select notRead from room_user where roomId = ${roomId} and userId = ${userId}`
+
+    conn.query( sql, async ( err, result ) => {
+      if( err ) {
+        reject( err )
+      } else {
+        const parseResult = JSON.parse( JSON.stringify( result ) )
+        const notReadCount =_.get( parseResult, '0.notRead' )
+        if( zero ) {
+          await pushsub( 0, roomId, userId )
+          return
+        }
+        if( !notReadCount ) {
+          await pushsub( 1, roomId, userId )
+        } else {
+          await pushsub( notReadCount + 1, roomId, userId )
+        }
+      }
+    } )
+  
+  } )
+
+  
+}
+
+function pushsub( count, roomId, userId ) {
+  return new Promise( ( resolve, reject ) => {
+    const sql = `UPDATE room_user SET notRead = '${count}' WHERE roomId = ${roomId} and userId = ${userId}`
+
+    conn.query( sql, async ( err, result ) => {
+      if( err ) {
+        reject( err )
+      } else {
+      }
+    } )
+  
+  } )
+
+  
+}
 
 
 function pushLastChat( roomId, message ) {
@@ -245,7 +314,6 @@ function sub( roomId, message ) {
 function getAllUserOfRoom( roomId, userId ) {
   return new Promise( ( resolve, reject ) => {
     const sql = `select * from room_user where roomId = '${roomId}' and userId = '${userId}' `
-
     conn.query( sql, ( err, result ) => {
       if( err ) {
         reject( err )
@@ -284,7 +352,7 @@ app.get ( '/getroomlist', async ( req, res, next ) => {
       res.send( {
         code: 200,
         payload: {
-          roomList
+          roomList: _.orderBy( roomList, 'lastChatDate', 'desc' )
         }
       } )
     }
