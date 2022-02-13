@@ -181,6 +181,7 @@ app.post ( '/pushchat', async ( req, res, next ) => {
   const userId = req.body.userId
   const message = req.body.chatValue
   const roomId = req.body.roomId
+  const userName = req.body.userName
   
   const now = moment().valueOf()
 
@@ -202,7 +203,6 @@ app.post ( '/pushchat', async ( req, res, next ) => {
       } )
     }
   } )
- 
  const toUserIdList = await getAllUserOfRoom( roomId, userId )
 
  for( const id of toUserIdList ) {
@@ -210,7 +210,9 @@ app.post ( '/pushchat', async ( req, res, next ) => {
     const socketId = res
     io.to( socketId ).emit( 'chat', {
       fromUserId: userId,
-      refreshRoomId: roomId
+      refreshRoomId: roomId,
+      message: message,
+      fromUserName: userName
     } )
   } )
 
